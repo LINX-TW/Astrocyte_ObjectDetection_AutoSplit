@@ -4,6 +4,8 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include <stdexcept>
+#include <stdio.h>
 using namespace std;
 
 struct Result
@@ -47,10 +49,27 @@ int AI_ObjectDetection_Process(CProImage image);
 int AI_ObjectDetection_Load(string modelFilename);
 int AI_ObjectDetection_Build();
 
+
+
 int main() {
     // Initial the Parameters.
     string modelFilename = ".//Heatsink_0.4.mod";
-    string inputFileName = ".//Input_Image//Image__S1_Back_G1_EX1000_IN90_1.bmp";
+    string inputFileName ;
+	string filePath ;
+	string fileNumber;
+	string readFileName;
+
+	cout << "Please enter the file path: ";	
+	cin >> filePath;
+	
+	shellCmd("dir /b /a-d " + filePath + "\\*.bmp | find /v /c\"\"", fileNumber);
+	cout << fileNumber;
+	
+	shellCmd("dir /b /a-d "+ filePath +"\\*.bmp", readFileName);
+	cout << readFileName;
+
+	inputFileName = filePath + "\\"+ readFileName;
+	cout << inputFileName;
 
     SapBuffer inBuf;
     CProImage image;
@@ -158,35 +177,76 @@ int main() {
                 tempInfo.boundingBox.x += TargetX;
                 tempInfo.boundingBox.y += TargetY;
                 CProRect roi(tempInfo.boundingBox.x, tempInfo.boundingBox.y, tempInfo.boundingBox.w, tempInfo.boundingBox.h);
-                m_Graphic->Rectangle(mergeBuffer, tempInfo.boundingBox.x, tempInfo.boundingBox.y, // Drawing
-                    tempInfo.boundingBox.x + tempInfo.boundingBox.w, tempInfo.boundingBox.y + tempInfo.boundingBox.h);
-				
-				m_Graphic->Text(mergeBuffer
-							,tempInfo.boundingBox.x
-							,tempInfo.boundingBox.y-20
-							,m_modelAttributes.GetReferenceClassName (tempInfo.referenceClassIndex)); //Drawing Text
-
-                CProImage tempRoi = CProImage(width, height, mergeReslut.proImage.GetFormat(), roi, mergeReslut.proImage.GetData());
                 
-                string saveFileName;
-                saveFileName.assign(".//Output_Image//")
-					.append(m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)) //Defect_Name
-					.append("_X-"+to_string(tempInfo.boundingBox.x))  //X position
-					.append("_Y-"+to_string(tempInfo.boundingBox.y))  //Y position
-					.append(".bmp");                                  // Image Format
-                tempRoi.Save(saveFileName.c_str(), CProImage::FileBmp);
+				m_Graphic->Rectangle(mergeBuffer, tempInfo.boundingBox.x, tempInfo.boundingBox.y, // Drawing
+                    tempInfo.boundingBox.x + tempInfo.boundingBox.w, tempInfo.boundingBox.y + tempInfo.boundingBox.h);
+
+				if (tempInfo.boundingBox.y - 18 <= 0)
+				{
+					m_Graphic->Text(mergeBuffer
+						, tempInfo.boundingBox.x
+						, tempInfo.boundingBox.y + tempInfo.boundingBox.h
+						, m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
+				}
+				else
+				{
+					m_Graphic->Text(mergeBuffer
+						, tempInfo.boundingBox.x
+						, tempInfo.boundingBox.y - 18
+						, m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
+				}
+
+				
+
+               // CProImage tempRoi = CProImage(width, height, mergeReslut.proImage.GetFormat(), roi, mergeReslut.proImage.GetData());
+                
+     //           string saveFileName;
+     //           saveFileName.assign(".//Output_Image//")
+					//.append(m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)) //Defect_Name
+					//.append("_X-"+to_string(tempInfo.boundingBox.x))  //X position
+					//.append("_Y-"+to_string(tempInfo.boundingBox.y))  //Y position
+					//.append(".bmp");                                  // Image Format
+     //           tempRoi.Save(saveFileName.c_str(), CProImage::FileBmp);
                 mergeReslut.objectInfo.push_back(tempInfo);
             }
         }
     }
 
     SapView* View = new SapView(mergeBuffer, (HWND)-1);
-	mergeBuffer->Save(".//Output_Image//InferenceResult.bmp", "-format bmp");
+	mergeBuffer->Save(".//Output_Image//InferenceResult.bmp", "-format bmp");  //Save Inference Result
     View->Create();
     View->Show();
 
     system("pause");
     return 0;
+}
+
+//#*****************************************************************************
+//# Function   : shellCmd
+//# Description : Read System command return result.
+//# Inputs : System command
+//# Outputs : return command result
+//# Notice : None
+//#*****************************************************************************
+bool shellCmd(const string &cmd, string &result) {
+	char buffer[512];
+	result = "";
+
+	// Open pipe to file
+	FILE* pipe = _popen(cmd.c_str(), "r");
+	if (!pipe) {
+		return false;
+	}
+
+	// read till end of process:
+	while (!feof(pipe)) {
+		// use buffer to read and add to result
+		if (fgets(buffer, sizeof(buffer), pipe) != NULL)
+			result += buffer;
+	}
+
+	_pclose(pipe);
+	return true;
 }
 
 //#*****************************************************************************

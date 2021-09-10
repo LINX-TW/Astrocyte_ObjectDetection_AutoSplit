@@ -1,3 +1,3 @@
 ﻿  Main.cpp
-c:\astrocyte\0. ai檢測軟體\saperaaionepiece_v2.0\saperaaionepiece\main.cpp(118): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
+c:\astrocyte\0. ai檢測軟體\saperaaionepiece_v2.0\saperaaionepiece\main.cpp(159): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
   SaperaAIOnePiece.vcxproj -> C:\Astrocyte\0. AI檢測軟體\SaperaAIOnePiece_V2.0\x64\Debug\SaperaAIOnePiece.exe
