@@ -5,7 +5,11 @@
 #include <iomanip>
 #include <vector>
 #include <stdexcept>
-#include <stdio.h>
+#include <direct.h>
+#include <fstream>
+#include <cstdio>
+#include <io.h>
+
 using namespace std;
 
 struct Result
@@ -38,45 +42,76 @@ const auto OneGigabyte = 1024.0 * 1024.0 * 1024.0;
 const auto Ratio = 512;
 CProAiInferenceObjectDetection m_inferenceEngine;
 CProAiInference::ModelAttributes m_modelAttributes;
-vector <CProImage> splitImages;
-vector <Result> splitImagesResults;
-Result mergeReslut;
+
+
 
 // Functions Initialize
-int PaddingAndSplitCProImage(CProImage image);
+void getFiles(string path, vector<string>& fullFiles, vector<string>& files);
+bool shellCmd(const string& cmd, string& result);
+int PaddingAndSplitCProImage(CProImage image, string imageName, Result& mergeReslut, vector <CProImage>& splitImages);
 int SaperaBufferToCProImage(SapBuffer &inBuf, CProImage& image);
-int AI_ObjectDetection_Process(CProImage image);
+int AI_ObjectDetection_Image(string modelFilename, string inputFileDir, string imageName,
+    Result& mergeReslut, vector <CProImage>& splitImages, vector <Result>& splitImagesResults);
+int AI_ObjectDetection_Process(CProImage image, vector <Result>& splitImagesResults);
 int AI_ObjectDetection_Load(string modelFilename);
 int AI_ObjectDetection_Build();
 
 
-
 int main() {
     // Initial the Parameters.
-    string modelFilename = ".//Heatsink_0.4.mod";
-    string inputFileName ;
-	string filePath ;
+    string modelFilename = ".//Hardware.mod";
+    string inputFileName = ".//Input_Image//obj0080.jpg";
+	char filePath[1024] ;
 	string fileNumber;
-	string readFileName;
+	string readFileName;    
+    vector<string> imagesFullDir;
+    vector<string> imagesName;
 
+    // Get all candidate images.
 	cout << "Please enter the file path: ";	
-	cin >> filePath;
+    cin.getline(filePath, 1024);
 	
-	shellCmd("dir /b /a-d " + filePath + "\\*.bmp | find /v /c\"\"", fileNumber);
-	cout << fileNumber;
-	
-	shellCmd("dir /b /a-d "+ filePath +"\\*.bmp", readFileName);
-	cout << readFileName;
+    getFiles(filePath, imagesFullDir, imagesName);
 
-	inputFileName = filePath + "\\"+ readFileName;
-	cout << inputFileName;
+    int results = 0;
+    for (int i = 0; i < imagesFullDir.size(); i++) {
+        Result mergeReslut;
+        vector <CProImage> splitImages;
+        vector <Result> splitImagesResults;
 
+        int result = AI_ObjectDetection_Image(modelFilename, imagesFullDir.at(i), imagesName.at(i),
+            mergeReslut, splitImages, splitImagesResults);
+        if (result == 0) {
+            cout << "***AI Object Detection of '" << imagesName.at(i) << "' PASS.***" << endl << endl;
+        }
+        else {
+            cout << "***AI Object Detection of '" << imagesName.at(i) << "' FAIL.***" << endl << endl;
+        }
+        results += result;
+    }
+   
+    if (results != 0)
+        return 1;
+
+    system("pause");
+    return 0;
+}
+
+//#*****************************************************************************
+//# Function   : AI_ObjectDetection_Image
+//# Description : The full Object Detection Flow
+//# Inputs : string modelFilename, string inputFileDir, string imageName, Result& mergeReslut, vector <CProImage>& splitImages, vector <Result>& splitImagesResults
+//# Outputs : Pass : return 0 ; Fail : return 1
+//# Notice : None
+//#*****************************************************************************
+int AI_ObjectDetection_Image(string modelFilename, string inputFileDir, string imageName,
+    Result &mergeReslut, vector <CProImage> &splitImages, vector <Result> &splitImagesResults) {
     SapBuffer inBuf;
     CProImage image;
     int result = 0;
 
     // Allocate the image into Sapera Buffer.
-    inBuf.SetParametersFromFile(inputFileName.c_str(), SapDefBufferType);
+    inBuf.SetParametersFromFile(inputFileDir.c_str(), SapDefBufferType);
 
     // Synchronize the Sapera buffer and CProImage format.
     SapFormat format = inBuf.GetFormat();
@@ -91,7 +126,7 @@ int main() {
     if (!inBuf.Create())
         return 0;
     // Load input image
-    if (!inBuf.Load(inputFileName.c_str()))
+    if (!inBuf.Load(inputFileDir.c_str()))
         return 0;
 
     // Sapera to CProImage
@@ -105,7 +140,7 @@ int main() {
     }
 
     // Padding and Split
-    result += PaddingAndSplitCProImage(image);
+    result += PaddingAndSplitCProImage(image, imageName, mergeReslut, splitImages);
     if (result == 0) {
         cout << "***Padding and Split CProImage into several SubImages PASS.***" << endl << endl;
     }
@@ -113,7 +148,7 @@ int main() {
         cout << "***Padding and Split CProImage into several SubImages FAIL.***" << endl << endl;
         return 1;
     }
-    
+
     // Load AI Object Detection
     result += AI_ObjectDetection_Load(modelFilename);
     if (result == 0) {
@@ -137,9 +172,9 @@ int main() {
     int splitImageSize = splitImages.size();
     for (int i = 0; i < splitImageSize; i++) {
         // Process AI Object Detection
-        result += AI_ObjectDetection_Process(splitImages.at(i));
+        result += AI_ObjectDetection_Process(splitImages.at(i), splitImagesResults);
         if (result == 0) {
-            cout << "***Process '" << i <<  "' AI Object Detection PASS.***" << endl << endl;
+            cout << "***Process '" << i << "' AI Object Detection PASS.***" << endl << endl;
         }
         else {
             cout << "***Process '" << i << "' AI Object Detection FAIL.***" << endl << endl;
@@ -156,12 +191,11 @@ int main() {
     SapBuffer* mergeBuffer = new SapBuffer(1, &mergePtr, width, height,
         SapFormatRGB8888, SapBuffer::TypeScatterGather);
     SapGraphic* m_Graphic = new SapGraphic();
-    //SapDataRGB color(255, 0, 0);
     SapDataMono color((255 << 16) | (0 << 8) | 0);
     m_Graphic->SetColor(color);
     m_Graphic->Create();
     mergeBuffer->Create();
-    
+
 
     for (int i = 0; i < height / Ratio; i++) {
         for (int j = 0; j < width / Ratio; j++) {
@@ -177,48 +211,82 @@ int main() {
                 tempInfo.boundingBox.x += TargetX;
                 tempInfo.boundingBox.y += TargetY;
                 CProRect roi(tempInfo.boundingBox.x, tempInfo.boundingBox.y, tempInfo.boundingBox.w, tempInfo.boundingBox.h);
-                
-				m_Graphic->Rectangle(mergeBuffer, tempInfo.boundingBox.x, tempInfo.boundingBox.y, // Drawing
+
+                m_Graphic->Rectangle(mergeBuffer, tempInfo.boundingBox.x, tempInfo.boundingBox.y, // Drawing
                     tempInfo.boundingBox.x + tempInfo.boundingBox.w, tempInfo.boundingBox.y + tempInfo.boundingBox.h);
 
-				if (tempInfo.boundingBox.y - 18 <= 0)
-				{
-					m_Graphic->Text(mergeBuffer
-						, tempInfo.boundingBox.x
-						, tempInfo.boundingBox.y + tempInfo.boundingBox.h
-						, m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
-				}
-				else
-				{
-					m_Graphic->Text(mergeBuffer
-						, tempInfo.boundingBox.x
-						, tempInfo.boundingBox.y - 18
-						, m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
-				}
+                if (tempInfo.boundingBox.y - 18 <= 0)
+                {
+                    m_Graphic->Text(mergeBuffer
+                        , tempInfo.boundingBox.x
+                        , tempInfo.boundingBox.y + tempInfo.boundingBox.h
+                        , m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
+                }
+                else
+                {
+                    m_Graphic->Text(mergeBuffer
+                        , tempInfo.boundingBox.x
+                        , tempInfo.boundingBox.y - 18
+                        , m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
+                }
 
-				
 
-               // CProImage tempRoi = CProImage(width, height, mergeReslut.proImage.GetFormat(), roi, mergeReslut.proImage.GetData());
-                
-     //           string saveFileName;
-     //           saveFileName.assign(".//Output_Image//")
-					//.append(m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)) //Defect_Name
-					//.append("_X-"+to_string(tempInfo.boundingBox.x))  //X position
-					//.append("_Y-"+to_string(tempInfo.boundingBox.y))  //Y position
-					//.append(".bmp");                                  // Image Format
-     //           tempRoi.Save(saveFileName.c_str(), CProImage::FileBmp);
+
+                // CProImage tempRoi = CProImage(width, height, mergeReslut.proImage.GetFormat(), roi, mergeReslut.proImage.GetData());
+
+      //           string saveFileName;
+      //           saveFileName.assign(".//Output_Image//")
+                     //.append(m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)) //Defect_Name
+                     //.append("_X-"+to_string(tempInfo.boundingBox.x))  //X position
+                     //.append("_Y-"+to_string(tempInfo.boundingBox.y))  //Y position
+                     //.append(".bmp");                                  // Image Format
+      //           tempRoi.Save(saveFileName.c_str(), CProImage::FileBmp);
                 mergeReslut.objectInfo.push_back(tempInfo);
             }
         }
     }
 
     SapView* View = new SapView(mergeBuffer, (HWND)-1);
-	mergeBuffer->Save(".//Output_Image//InferenceResult.bmp", "-format bmp");  //Save Inference Result
+    string outputFile = ".//Output_Image//Output_" + imageName;
+    mergeBuffer->Save(outputFile.c_str(), "-format bmp");  //Save Inference Result
     View->Create();
     View->Show();
 
-    system("pause");
     return 0;
+}
+
+//#*****************************************************************************
+//# Function   : getFiles
+//# Description : Get the files (bmp / jpg) in the target path.
+//# Inputs : string path, vector<string>& fullFiles, vector<string>& files
+//# Outputs : return void
+//# Notice : None
+//#*****************************************************************************
+void getFiles(string path, vector<string>& fullFiles, vector<string>& files)
+{
+    intptr_t  hFile = 0;
+    struct _finddata_t fileinfo;
+    string p;
+    if ((hFile = _findfirst(p.assign(path).append("\\*").c_str(), &fileinfo)) != -1)//assign方法可以理解為先將原字串清空，然後賦予新的值作替換。
+    {
+        do
+        {
+            if ((fileinfo.attrib & _A_SUBDIR))//是否為資料夾
+            {
+                if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
+                    getFiles(p.assign(path).append("\\").append(fileinfo.name), fullFiles, files);//子資料夾下遞迴訪問
+            }
+            else//非資料夾
+            {
+                string checkString = fileinfo.name;
+                if (checkString.find(".bmp") != string::npos || checkString.find(".jpg") != string::npos) {
+                    fullFiles.push_back(p.assign(path).append("\\").append(fileinfo.name));
+                    files.push_back(fileinfo.name);
+                }
+            }
+        } while (_findnext(hFile, &fileinfo) == 0);
+        _findclose(hFile);
+    }
 }
 
 //#*****************************************************************************
@@ -256,8 +324,26 @@ bool shellCmd(const string &cmd, string &result) {
 //# Outputs : Pass : return 0 ; Fail : return 1
 //# Notice : None
 //#*****************************************************************************
-int PaddingAndSplitCProImage(CProImage image) {
+int PaddingAndSplitCProImage(CProImage image, string imageName, Result &mergeReslut, vector <CProImage> &splitImages) {
     cout << "[ Start to Padding and Split CProImage ]" << endl;
+
+    // Build the Split images folder.
+    string splitImageFolder;
+    if (imageName.find(".bmp") != string::npos)
+        splitImageFolder = imageName.substr(0, imageName.find(".bmp"));
+    else if (imageName.find(".jpg") != string::npos)
+        splitImageFolder = imageName.substr(0, imageName.find(".jpg"));
+    else
+    {
+        cout << "Not Support this image sub Title." << endl;
+        return 1;
+    }
+    printf("The Split Images are put into %s Folder\n", splitImageFolder.c_str());
+
+    string FolderDir = ".//Split_Image//" + splitImageFolder.append("//");
+
+    int mkdirStatus;
+    mkdirStatus = _mkdir(FolderDir.c_str());
 
     // Padding and Split
     int NewX = 0, NewY = 0;
@@ -271,7 +357,7 @@ int PaddingAndSplitCProImage(CProImage image) {
     cout << "The X size change from " << nowX << " to " << NewX << endl;
     cout << "The Y size change from " << nowY << " to " << NewY << endl << endl;
     
-    string FolderDir = ".//Split_Image//";
+    
     for (int i = 0; i < NewY / Ratio; i++) {
         for (int j = 0; j < NewX / Ratio; j++) {
             string saveFileName;
@@ -344,7 +430,7 @@ int SaperaBufferToCProImage(SapBuffer &inBuf, CProImage &image) {
 //# Outputs : Pass : return 0 ; Fail : return 1
 //# Notice : None
 //#*****************************************************************************
-int AI_ObjectDetection_Process(CProImage image) {
+int AI_ObjectDetection_Process(CProImage image, vector <Result> &splitImagesResults) {
     cout << "[ Start to process AI Object Detection ]" << endl;
     Result res;
 
