@@ -59,16 +59,22 @@ int AI_ObjectDetection_Build();
 
 int main() {
     // Initial the Parameters.
-    string modelFilename = ".//Hardware.mod";
-    string inputFileName = ".//Input_Image//obj0080.jpg";
+    //string modelFilename = ".//Model_JABIL_UpTop0.5.mod";
+    //string inputFileName = ".//Input_Image//obj0080.jpg";
+	char modelFilename[1024];
 	char filePath[1024] ;
 	string fileNumber;
 	string readFileName;    
     vector<string> imagesFullDir;
     vector<string> imagesName;
 
+	// Get all model file.
+	cout << "Please enter the file path(with file full name): ";
+	cout << "Ex : c://ObjectDetection .mod\n";
+	cin.getline(modelFilename, 1024);
+
     // Get all candidate images.
-	cout << "Please enter the file path: ";	
+	cout << "\nPlease enter the file path: \n";	
     cin.getline(filePath, 1024);
 	
     getFiles(filePath, imagesFullDir, imagesName);
@@ -181,15 +187,32 @@ int AI_ObjectDetection_Image(string modelFilename, string inputFileDir, string i
             return 1;
         }
     }
-
     // Regarding the combination of split images.
     int width = mergeReslut.proImage.GetWidth();
     int height = mergeReslut.proImage.GetHeight();
+	
+	// Set the Drowing Parameters.
+	void* mergePtr = mergeReslut.proImage.GetData();	
+	SapFormat sapFormat;
+	switch (mergeReslut.proImage.GetFormat())
+	{
+	case CProData::FormatUByte:
+		sapFormat =  SapFormatMono8;
+		break;
+	case CProData::FormatUShort:
+		sapFormat =  SapFormatMono16;
+		break;
+	case CProData::FormatRgb:
+		sapFormat =   SapFormatRGB8888;
+		break;
+	default:
+		//format = CProData::FormatUnknown;
+		break;
+	};
+	
+	SapBuffer* mergeBuffer = new SapBuffer(1, &mergePtr, width, height,
+		sapFormat, SapBuffer::TypeScatterGather);
 
-    // Set the Drowing Parameters.
-    void* mergePtr = mergeReslut.proImage.GetData();
-    SapBuffer* mergeBuffer = new SapBuffer(1, &mergePtr, width, height,
-        SapFormatRGB8888, SapBuffer::TypeScatterGather);
     SapGraphic* m_Graphic = new SapGraphic();
     SapDataMono color((255 << 16) | (0 << 8) | 0);
     m_Graphic->SetColor(color);
@@ -205,6 +228,11 @@ int AI_ObjectDetection_Image(string modelFilename, string inputFileDir, string i
             Result tempResult = splitImagesResults.at((width / Ratio) * i + j);
             for (int k = 0; k < tempResult.objectInfo.size(); k++) {
                 Result::ObjectInfo tempInfo = tempResult.objectInfo.at(k);
+				string score;
+				score.assign(m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex))
+					.append(":")
+					.append(to_string(tempInfo.confidenceScore));
+
                 if (tempInfo.confidenceScore < 0.10)
                     continue;
 
@@ -214,24 +242,25 @@ int AI_ObjectDetection_Image(string modelFilename, string inputFileDir, string i
 
                 m_Graphic->Rectangle(mergeBuffer, tempInfo.boundingBox.x, tempInfo.boundingBox.y, // Drawing
                     tempInfo.boundingBox.x + tempInfo.boundingBox.w, tempInfo.boundingBox.y + tempInfo.boundingBox.h);
+				
+				
+				//char *score = score.data();
 
                 if (tempInfo.boundingBox.y - 18 <= 0)
                 {
-                    m_Graphic->Text(mergeBuffer
-                        , tempInfo.boundingBox.x
-                        , tempInfo.boundingBox.y + tempInfo.boundingBox.h
-                        , m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
+					m_Graphic->Text(mergeBuffer
+						, tempInfo.boundingBox.x
+						, tempInfo.boundingBox.y + tempInfo.boundingBox.h
+						, score.c_str()); //Drawing Text
                 }
                 else
                 {
                     m_Graphic->Text(mergeBuffer
                         , tempInfo.boundingBox.x
                         , tempInfo.boundingBox.y - 18
-                        , m_modelAttributes.GetReferenceClassName(tempInfo.referenceClassIndex)); //Drawing Text
+                        , score.c_str()); //Drawing Text
                 }
-
-
-
+							   
                 // CProImage tempRoi = CProImage(width, height, mergeReslut.proImage.GetFormat(), roi, mergeReslut.proImage.GetData());
 
       //           string saveFileName;
@@ -249,8 +278,10 @@ int AI_ObjectDetection_Image(string modelFilename, string inputFileDir, string i
     SapView* View = new SapView(mergeBuffer, (HWND)-1);
     string outputFile = ".//Output_Image//Output_" + imageName;
     mergeBuffer->Save(outputFile.c_str(), "-format bmp");  //Save Inference Result
-    View->Create();
-    View->Show();
+    //View->Create();
+    //View->Show();
+
+	mergeBuffer->Destroy();
 
     return 0;
 }
